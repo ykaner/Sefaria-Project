@@ -363,6 +363,7 @@ def make_panel_dict(oref, versionEn, versionHe, filter, versionFilter, mode, **k
 
         settings_override = {}
         panelDisplayLanguage = kwargs.get("connectionsPanelDisplayLanguage", None) if mode == "Connections" else kwargs.get("panelDisplayLanguage", None)
+        panel["wordIndex"] = kwargs.get("wordIndex", None)
         aliyotOverride = kwargs.get("aliyotOverride")
         panel["selectedWords"] = kwargs.get("selectedWords", None)
         panel["selectedNamedEntity"] = kwargs.get("selectedNamedEntity", None)
@@ -375,8 +376,12 @@ def make_panel_dict(oref, versionEn, versionHe, filter, versionFilter, mode, **k
             panel["settings"] = settings_override
         if mode != "Connections" and oref != None:
             try:
-                text_family = TextFamily(oref, version=panel["currVersions"]["en"], lang="en", version2=panel["currVersions"]["he"], lang2="he", commentary=False,
-                                  context=True, pad=True, alts=True, wrapLinks=False, translationLanguagePreference=kwargs.get("translationLanguagePreference", None)).contents()
+                text_family = TextFamily(
+                    oref, version=panel["currVersions"]["en"], lang="en", 
+                    version2=panel["currVersions"]["he"], lang2="he", commentary=False,
+                    context=True, pad=True, alts=True,
+                    wrapLinks=False, wordIndex=panel["wordIndex"],
+                    translationLanguagePreference=kwargs.get("translationLanguagePreference", None)).contents()
             except NoVersionFoundError:
                 text_family = {}
             text_family["updateFromAPI"] = True
@@ -525,6 +530,8 @@ def text_panels(request, ref, version=None, lang=None, sheet=None):
             lang2 = request.GET.get("lang2", None)
             if lang2:
                 kwargs["connectionsPanelDisplayLanguage"] = lang2 if lang2 in ["en", "he"] else lang1 if lang1 in ["en", "he"] else request.interfaceLang[0:2]
+        wordIndex = request.GET.get("wordIndex", None)
+        kwargs["wordIndex"] = int(wordIndex) if wordIndex else None
         if request.GET.get("aliyot", None):
             kwargs["aliyotOverride"] = "aliyotOn" if int(request.GET.get("aliyot")) == 1 else "aliyotOff"
         kwargs["selectedWords"] = request.GET.get("lookup", None)
@@ -1317,13 +1324,19 @@ def texts_api(request, tref):
         stripItags = bool(int(request.GET.get("stripItags", False)))
         multiple = int(request.GET.get("multiple", 0))  # Either undefined, or a positive integer (indicating how many sections forward) or negative integer (indicating backward)
         translationLanguagePreference = request.GET.get("transLangPref", None)
+        wordIndex = request.GET.get("wordIndex", None)
+        wordIndex = int(wordIndex) if wordIndex else None
 
         def _get_text(oref, versionEn=versionEn, versionHe=versionHe, commentary=commentary, context=context, pad=pad,
-                      alts=alts, wrapLinks=wrapLinks, layer_name=layer_name, wrapNamedEntities=wrapNamedEntities, translationLanguagePreference=translationLanguagePreference):
-            text_family_kwargs = dict(version=versionEn, lang="en", version2=versionHe, lang2="he",
-                                      commentary=commentary, context=context, pad=pad, alts=alts,
-                                      wrapLinks=wrapLinks, stripItags=stripItags, wrapNamedEntities=wrapNamedEntities,
-                                      translationLanguagePreference=translationLanguagePreference)
+                      alts=alts, wrapLinks=wrapLinks, layer_name=layer_name,
+                      wrapNamedEntities=wrapNamedEntities,
+                      translationLanguagePreference=translationLanguagePreference,
+                      wordIndex=wordIndex):
+            text_family_kwargs = dict(
+                version=versionEn, lang="en", version2=versionHe, lang2="he",
+                commentary=commentary, context=context, pad=pad, alts=alts,
+                wrapLinks=wrapLinks, stripItags=stripItags, wrapNamedEntities=wrapNamedEntities,
+                wordIndex=wordIndex, translationLanguagePreference=translationLanguagePreference)
             try:
                 text = TextFamily(oref, **text_family_kwargs).contents()
             except AttributeError as e:
@@ -1361,7 +1374,8 @@ def texts_api(request, tref):
 
         if not multiple or abs(multiple) == 1:
             text = _get_text(oref, versionEn=versionEn, versionHe=versionHe, commentary=commentary, context=context, pad=pad,
-                             alts=alts, wrapLinks=wrapLinks, layer_name=layer_name)
+                             alts=alts, wrapLinks=wrapLinks,
+                             layer_name=layer_name, wordIndex=wordIndex)
             return jsonResponse(text, cb)
         else:
             # Return list of many sections
@@ -1374,12 +1388,14 @@ def texts_api(request, tref):
 
             while current < target_count:
                 text = _get_text(oref, versionEn=versionEn, versionHe=versionHe, commentary=commentary, context=context, pad=pad,
-                             alts=alts, wrapLinks=wrapLinks, layer_name=layer_name)
+                             alts=alts, wrapLinks=wrapLinks,
+                             layer_name=layer_name, wordIndex=wordIndex)
                 texts += [text]
                 if not text[direction]:
                     break
                 oref = Ref(text[direction])
                 current += 1
+                wordIndex = None
 
             return jsonResponse(texts, cb)
 

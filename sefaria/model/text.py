@@ -1228,6 +1228,19 @@ class AbstractTextRecord(object):
             itag.decompose()
         return soup.root.encode_contents().decode()  # remove divs added
 
+    @staticmethod
+    def _highlight_word_by_index(s, index):
+        def _get_word_slice_by_index(s, idx):
+            words = re.findall(r'\s*\S+\s*', s)
+            word_start = sum(map(len, words[:idx])) + len(words[idx]) - len(words[idx].lstrip())
+            word_end = word_start + len(words[idx].rstrip())
+            return word_start, word_end
+        word_start, word_end = _get_word_slice_by_index(s, index)
+        before = s[:word_start]
+        after = s[word_end:]
+        highlighted_word = f'<mark >{s[word_start:word_end]}</mark>'
+        return before + highlighted_word + after
+
     def _get_text_after_modifications(self, text_modification_funcs, start_sections=None):
         """
         :param text_modification_funcs: list(func). functions to apply in order on each segment in text chunk
@@ -2138,7 +2151,10 @@ class TextFamily(object):
         "he": "heSources"
     }
 
-    def __init__(self, oref, context=1, commentary=True, version=None, lang=None, version2=None, lang2=None, pad=True, alts=False, wrapLinks=False, stripItags=False, wrapNamedEntities=False, translationLanguagePreference=None):
+    def __init__(self, oref, context=1, commentary=True, version=None,
+            lang=None, version2=None, lang2=None, pad=True, alts=False,
+            wrapLinks=False, stripItags=False, wrapNamedEntities=False,
+            wordIndex=None, translationLanguagePreference=None):
         """
         :param oref:
         :param context:
@@ -2152,6 +2168,7 @@ class TextFamily(object):
         :param wrapLinks: whether to return the text requested with all internal citations marked up as html links <a>
         :param stripItags: whether to strip inline commentator tags and inline footnotes from text
         :param wrapNamedEntities: whether to return the text requested with all known named entities marked up as html links <a>.
+        :param wordIndex: index of a word in the text to mark.
         :return:
         """
         if pad:
@@ -2197,6 +2214,10 @@ class TextFamily(object):
                 c = TextChunk(**tc_kwargs)
             self._chunks[language] = c
             text_modification_funcs = []
+            if wordIndex is not None:
+                text_modification_funcs.append(
+                    lambda s, _: c._highlight_word_by_index(s, wordIndex)
+                )
             if wrapNamedEntities and len(c._versions) > 0:
                 from . import RefTopicLinkSet
                 named_entities = RefTopicLinkSet({"expandedRefs": {"$in": [r.normal() for r in oref.all_segment_refs()]}, "charLevelData.versionTitle": c._versions[0].versionTitle, "charLevelData.language": language})
